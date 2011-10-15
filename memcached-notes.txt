@@ -1,0 +1,4 @@
+Memcached
+- never frees slabs once allocated
+- item only moved in lru every n sec
+- removed items are not removed from lru but simply found when allocating new
