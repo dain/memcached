@@ -36,17 +36,17 @@ public class PrivateSlabAllocator
     {
         this.allocator = allocator;
 
-        Region preallocatedMemory = null;
+        Pointer preAllocatedPointer = null;
         if (preallocate) {
             /* Allocate everything in a big chunk with malloc */
             try {
-                preallocatedMemory = allocator.allocate(maxSize);
+                preAllocatedPointer = new Pointer(allocator.allocate(maxSize), maxSize);
             }
             catch (OutOfMemoryError e) {
                 System.err.println("Warning: Failed to allocate requested memory in one large chunk.\nWill allocate in smaller chunks\n");
             }
         }
-        preAllocatedPointer = new Pointer(preallocatedMemory, maxSize);
+        this.preAllocatedPointer = preAllocatedPointer;
     }
 
     public Region allocate(long size, boolean force)

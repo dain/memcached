@@ -27,7 +27,7 @@ public class SlabAllocator implements Allocator
     /* *
      * Slab sizing definitions.
      */
-    static final byte POWER_LARGEST = (byte) 200;
+    static final short POWER_LARGEST = 200;
     private static final int CHUNK_ALIGN_BYTES = 8;
 
     private final List<SlabManager> slabManagers;
@@ -57,13 +57,13 @@ public class SlabAllocator implements Allocator
         }
 
         List<SlabManager> slabManagers = new ArrayList<SlabManager>(POWER_LARGEST + 1);
-        for (byte i = 0; i < POWER_LARGEST && size <= maxItemSize / 2; i++) {
+        for (short i = 0; i < POWER_LARGEST && size <= maxItemSize / 2; i++) {
             // Make sure items are always n-byte aligned
             if (size % CHUNK_ALIGN_BYTES != 0) {
                 size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);
             }
 
-            slabManagers.add(new SlabManager(privateAllocator, i, size, maxItemSize / size));
+            slabManagers.add(new SlabManager(privateAllocator, (byte) i, size, maxItemSize / size));
             size *= factor;
         }
 

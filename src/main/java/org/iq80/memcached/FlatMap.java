@@ -532,8 +532,8 @@ public class FlatMap
         public ItemManager(SlabManager slabManager)
         {
             this.slabManager = slabManager;
-            head = Item.createItem(0, slabAllocator.getSlabManager(Item.FIXED_SIZE), false);
-            tail = Item.createItem(0, slabAllocator.getSlabManager(Item.FIXED_SIZE), false);
+            head = Item.createItem(0, slabAllocator.selectSlabManager(Item.FIXED_SIZE), false);
+            tail = Item.createItem(0, slabAllocator.selectSlabManager(Item.FIXED_SIZE), false);
         }
 
         public byte getId()
@@ -1066,7 +1066,7 @@ public class FlatMap
 
         public Region getKey()
         {
-            return new UnsafeAllocation(getAddress() + getKeyOffset(), getKeyLength());
+            return region.getRegion(getKeyOffset(), getKeyLength());
         }
 
         public void setKey(byte[] key)
@@ -1083,12 +1083,12 @@ public class FlatMap
 
         public Region getSuffix()
         {
-            return new UnsafeAllocation(getAddress() + getSuffixOffset(), getSuffixLength());
+            return region.getRegion(getSuffixOffset(), getSuffixLength());
         }
 
         public Region getValue()
         {
-            return new UnsafeAllocation(getAddress() + getValueOffset(), getValueLength());
+            return region.getRegion(getValueOffset(), getValueLength());
         }
 
         public long getAddress()

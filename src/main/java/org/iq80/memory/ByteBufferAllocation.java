@@ -38,7 +38,7 @@ public class ByteBufferAllocation implements Allocation
         this.address = ((long) id) << 32;
     }
 
-    private ByteBuffer getBufferSafe()
+    public ByteBuffer getBufferSafe()
     {
         ByteBuffer byteBuffer = this.byteBuffer;
         if (byteBuffer == null) {

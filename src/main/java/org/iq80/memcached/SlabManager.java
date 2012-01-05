@@ -111,33 +111,24 @@ public class SlabManager
 
     public Region allocate(long size)
     {
-        // fail unless we have space at the end of a recently allocated page,
-        // we have something on our freelist, or we could allocate a new page
-        if (openSlab == null && freeListCurrsor != 0) {
-            // add a slab
-            allocateNewSlab();
-        }
-
-        requested += size;
-
         if (freeListCurrsor != 0) {
-            // return off our freelist 
+            // return off our freelist
+            requested += size;
             long address = freeList[--freeListCurrsor];
             return new UnsafeAllocation(address, size);
-        }
-        else {
-            // allocate from the free page
-            if (openSlab == null) {
-                // add a slab
-            }
-
+        } else if(openSlab!=null) {
+            requested += size;
+            // if we recently allocated a whole page, return from that
             Region region = openSlab.getRegion(size);
-
             // if the open slab is fully committed, clear the reference
-            if (openSlab.hasRemaining(size)) {
+            if ( !openSlab.hasRemaining(size) ) {
                 openSlab = null;
             }
             return region;
+        } else {
+            // fail unless we have space at the end of a recently allocated page,
+            // we have something on our freelist, or we could allocate a new page
+            return null;
         }
     }
 
