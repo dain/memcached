@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@
  */
 package org.iq80.memory;
 
-import sun.misc.Unsafe;
+import java.nio.ByteBuffer;
 
 import static org.iq80.memory.Allocator.CHAR_SIZE;
 import static org.iq80.memory.Allocator.DOUBLE_SIZE;
@@ -24,34 +25,22 @@ import static org.iq80.memory.Allocator.INT_SIZE;
 import static org.iq80.memory.Allocator.LONG_SIZE;
 import static org.iq80.memory.Allocator.NULL_POINTER;
 import static org.iq80.memory.Allocator.SHORT_SIZE;
+import static org.iq80.memory.UnsafeAllocator.*;
 
 public class UnsafeAllocation implements Allocation
 {
-    private final Unsafe unsafe;
     public final long address;
     public final long size;
-    private final boolean checkBounds;
-    private final BlockCopy blockCopy;
     private boolean released;
 
-    public UnsafeAllocation(long address, long size)
-    {
-        this(UnsafeAllocator.unsafe, UnsafeAllocator.blockCopy, address, size, true);
+    static {
+        if( unsafe == null || blockCopy ==null ) {
+            throw new RuntimeException("Unsafe access not available");
+        }
     }
 
-    public UnsafeAllocation(long address, long size, boolean isCheckBounds)
+    UnsafeAllocation(long address, long size)
     {
-        this(UnsafeAllocator.unsafe, UnsafeAllocator.blockCopy, address, size, isCheckBounds);
-    }
-
-    public UnsafeAllocation(Unsafe unsafe, BlockCopy blockCopy, long address, long size, boolean isCheckBounds)
-    {
-        if (unsafe == null) {
-            throw new NullPointerException("unsafe is null");
-        }
-        if (blockCopy == null) {
-            throw new NullPointerException("blockCopy is null");
-        }
         if (address <= 0) {
             throw new IllegalArgumentException("Invalid address: " + address);
         }
@@ -61,12 +50,17 @@ public class UnsafeAllocation implements Allocation
         if (address + size < size) {
             throw new IllegalArgumentException("Address + size is greater than 64 bits");
         }
-
-        this.unsafe = unsafe;
-        this.blockCopy = blockCopy;
         this.address = address;
         this.size = size;
-        this.checkBounds = isCheckBounds;
+    }
+
+    public Allocator getAllocator() {
+        return UnsafeAllocator.INSTANCE;
+    }
+
+    @Override
+    public ByteBuffer toByteBuffer() {
+        throw new UnsupportedOperationException("Don't know how to convert to a byte buffer yet");
     }
 
     public void free()
@@ -104,7 +98,7 @@ public class UnsafeAllocation implements Allocation
         released = true;
 
         // return a new pointer
-        return new UnsafeAllocation(unsafe, blockCopy, newAddress, size, checkBounds);
+        return new UnsafeAllocation(newAddress, size);
     }
 
     public long getAddress()

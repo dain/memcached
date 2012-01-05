@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +18,7 @@ package org.iq80.memcached;
 
 import org.iq80.memory.Allocation;
 import org.iq80.memory.Allocator;
+import org.iq80.memory.Region;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,11 +29,12 @@ public class SlabAllocator implements Allocator
     /* *
      * Slab sizing definitions.
      */
-    static final byte POWER_LARGEST = (byte) 200;
+    static final short POWER_LARGEST = 200;
     private static final int CHUNK_ALIGN_BYTES = 8;
 
     private final List<SlabManager> slabManagers;
     private final int largestSlabId;
+    private final Allocator allocator;
 
     /**
      * Create a slab allocator.  The available slab sizes are determined and a
@@ -46,6 +49,7 @@ public class SlabAllocator implements Allocator
      */
     public SlabAllocator(Allocator allocator, long maxMemory, double factor, boolean prealloc, int chunkSize, int maxItemSize)
     {
+        this.allocator = allocator;
         PrivateSlabAllocator privateAllocator = new PrivateSlabAllocator(allocator, maxMemory, prealloc);
 
         // todo move to caller
@@ -57,13 +61,13 @@ public class SlabAllocator implements Allocator
         }
 
         List<SlabManager> slabManagers = new ArrayList<SlabManager>(POWER_LARGEST + 1);
-        for (byte i = 0; i < POWER_LARGEST && size <= maxItemSize / 2; i++) {
+        for (short i = 0; i < POWER_LARGEST && size <= maxItemSize / 2; i++) {
             // Make sure items are always n-byte aligned
             if (size % CHUNK_ALIGN_BYTES != 0) {
                 size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);
             }
 
-            slabManagers.add(new SlabManager(privateAllocator, i, size, maxItemSize / size));
+            slabManagers.add(new SlabManager(privateAllocator, (byte) i, size, maxItemSize / size));
             size *= factor;
         }
 
@@ -87,6 +91,16 @@ public class SlabAllocator implements Allocator
             throw new IllegalArgumentException("Size is greater then largest max size");
         }
         return (Allocation) slabClass.allocate(size);
+    }
+
+    @Override
+    public Region region(long address, long length) throws IndexOutOfBoundsException {
+        return allocator.region(address, length);
+    }
+
+    @Override
+    public Region region(long address) throws IndexOutOfBoundsException {
+        return allocator.region(address);
     }
 
     public List<SlabManager> getSlabManagers()

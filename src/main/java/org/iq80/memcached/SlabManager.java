@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +16,7 @@
  */
 package org.iq80.memcached;
 
+import org.iq80.memory.Allocator;
 import org.iq80.memory.Pointer;
 import org.iq80.memory.Region;
 import org.iq80.memory.UnsafeAllocation;
@@ -111,33 +113,24 @@ public class SlabManager
 
     public Region allocate(long size)
     {
-        // fail unless we have space at the end of a recently allocated page,
-        // we have something on our freelist, or we could allocate a new page
-        if (openSlab == null && freeListCurrsor != 0) {
-            // add a slab
-            allocateNewSlab();
-        }
-
-        requested += size;
-
         if (freeListCurrsor != 0) {
-            // return off our freelist 
+            // return off our freelist
+            requested += size;
             long address = freeList[--freeListCurrsor];
-            return new UnsafeAllocation(address, size);
-        }
-        else {
-            // allocate from the free page
-            if (openSlab == null) {
-                // add a slab
-            }
-
+            return allocator.region(address, size);
+        } else if(openSlab!=null) {
+            requested += size;
+            // if we recently allocated a whole page, return from that
             Region region = openSlab.getRegion(size);
-
             // if the open slab is fully committed, clear the reference
-            if (openSlab.hasRemaining(size)) {
+            if ( !openSlab.hasRemaining(size) ) {
                 openSlab = null;
             }
             return region;
+        } else {
+            // fail unless we have space at the end of a recently allocated page,
+            // we have something on our freelist, or we could allocate a new page
+            return null;
         }
     }
 
@@ -237,5 +230,9 @@ public class SlabManager
         sb.append(", chunksPerSlab=").append(chunksPerSlab);
         sb.append('}');
         return sb.toString();
+    }
+
+    public Allocator getAllocator() {
+        return allocator.getAllocator();
     }
 }

@@ -40,23 +40,23 @@ public class PointerTest
     protected void setUp()
             throws Exception
     {
-        unsafeAllocator = new UnsafeAllocator();
+        unsafeAllocator = UnsafeAllocator.INSTANCE;
     }
 
     public void testBasics()
     {
-        UnsafeAllocation pointer = new UnsafeAllocation(33, 2000, true);
+        UnsafeAllocation pointer = new UnsafeAllocation(33, 2000);
         assertEquals(pointer.address, 33);
         assertEquals(pointer.size, 2000);
 
         // Address and size should be used for equals, hashCode and comparison
         assertEquals(pointer, new UnsafeAllocation(33, 2000));
-        assertEquals(pointer, new UnsafeAllocation(33, 2000, false));
+        assertEquals(pointer, new UnsafeAllocation(33, 2000));
         assertTrue(!pointer.equals(new UnsafeAllocation(33, 4000)));
         assertTrue(!pointer.equals(new UnsafeAllocation(34, 2000)));
 
         assertEquals(pointer.hashCode(), new UnsafeAllocation(33, 2000).hashCode());
-        assertEquals(pointer.hashCode(), new UnsafeAllocation(33, 2000, false).hashCode());
+        assertEquals(pointer.hashCode(), new UnsafeAllocation(33, 2000).hashCode());
         assertTrue(pointer.hashCode() != new UnsafeAllocation(33, 4000).hashCode());
         assertTrue(pointer.hashCode() != new UnsafeAllocation(34, 2000).hashCode());
 

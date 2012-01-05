@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,17 +37,17 @@ public class PrivateSlabAllocator
     {
         this.allocator = allocator;
 
-        Region preallocatedMemory = null;
+        Pointer preAllocatedPointer = null;
         if (preallocate) {
             /* Allocate everything in a big chunk with malloc */
             try {
-                preallocatedMemory = allocator.allocate(maxSize);
+                preAllocatedPointer = new Pointer(allocator.allocate(maxSize), maxSize);
             }
             catch (OutOfMemoryError e) {
                 System.err.println("Warning: Failed to allocate requested memory in one large chunk.\nWill allocate in smaller chunks\n");
             }
         }
-        preAllocatedPointer = new Pointer(preallocatedMemory, maxSize);
+        this.preAllocatedPointer = preAllocatedPointer;
     }
 
     public Region allocate(long size, boolean force)
@@ -87,5 +88,13 @@ public class PrivateSlabAllocator
             // no more memory available
             return null;
         }
+    }
+
+    public Region region(long address, long length) throws IndexOutOfBoundsException {
+        return allocator.region(address, length);
+    }
+
+    public Allocator getAllocator() {
+        return allocator;
     }
 }

@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +16,8 @@
  */
 package org.iq80.memcached;
 
-import org.iq80.memcached.FlatMap.Item.HashChain;
-import org.iq80.memcached.FlatMap.Item.PrevChain;
 import org.iq80.memory.Allocator;
 import org.iq80.memory.Region;
-import org.iq80.memory.UnsafeAllocation;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -60,7 +58,7 @@ public class FlatMap
     private long oldest_live = 0;
     private boolean useCas = true;
 
-    private final Monitor monitor = null;
+    private final Monitor monitor = new NullMonitor();
 
 
     /**
@@ -131,7 +129,7 @@ public class FlatMap
         byte[] suffix = String.format(" %d %d\r\n", userFlags, valueLength - 2).getBytes(UTF8);
 
         // determine total length of the record
-        long totalLength = Item.calculateTotalSize(key.length, suffix.length, valueLength, useCas);
+        long totalLength = calculateTotalSize(key.length, suffix.length, valueLength);
 
         // find the item manager for items of this size
         ItemManager itemManager = null;
@@ -207,7 +205,6 @@ public class FlatMap
     public void insert(Item item)
     {
         monitor.itemLink(item);
-
         itemManagers.get(item.getSlabId()).insert(item);
     }
 
@@ -242,8 +239,7 @@ public class FlatMap
     public void release(Item it)
     {
         monitor.itemRemove(it);
-
-        it.release(slabAllocator);
+        it.release();
     }
 
     /**
@@ -359,7 +355,7 @@ public class FlatMap
             return false;
         }
 
-        Item item = Item.cast(hashtable[bucket]);
+        Item item = cast(hashtable[bucket]);
 
         // If this is the one, delete it from the table
         if (item.keyEquals(key)) {
@@ -433,9 +429,9 @@ public class FlatMap
 
             // migrate a batch of buckets
             for (int i = 0; i < hash_bulk_move && expanding; ++i) {
-                for (Item next, item = Item.cast(old_hashtable[expand_bucket]); null != item; item = next) {
+                for (Item next, item = cast(old_hashtable[expand_bucket]); null != item; item = next) {
                     // remember the next becasue it will be overwritten below
-                    next = Item.cast(item.getHashClainNext());
+                    next = cast(item.getHashClainNext());
 
                     // rehash
                     int bucket = Hash.hash(item.getKey(), 0) & hashmask(hashPower);
@@ -523,7 +519,7 @@ public class FlatMap
     {
         private final SlabManager slabManager;
         private final boolean evictToFree = true;
-        private final ItemStats stats = null;
+        private final ItemStats stats = new NullItemStats();
         private final Item head;
         private final Item tail;
         private long size;
@@ -532,8 +528,8 @@ public class FlatMap
         public ItemManager(SlabManager slabManager)
         {
             this.slabManager = slabManager;
-            head = Item.createItem(0, slabAllocator.getSlabManager(Item.FIXED_SIZE), false);
-            tail = Item.createItem(0, slabAllocator.getSlabManager(Item.FIXED_SIZE), false);
+            head = createItem(0, slabAllocator.selectSlabManager(FIXED_SIZE));
+            tail = createItem(0, slabAllocator.selectSlabManager(FIXED_SIZE));
         }
 
         public byte getId()
@@ -566,7 +562,7 @@ public class FlatMap
             }
 
             // we didn't find a free item, allocate one
-            item = Item.createItem(totalLength, slabManager, useCas);
+            item = createItem(totalLength, slabManager);
             if (item != null) {
                 return item;
             }
@@ -586,7 +582,7 @@ public class FlatMap
 
             // try to allocate again
             // maybe someone else freed some stuff
-            item = Item.createItem(totalLength, slabManager, useCas);
+            item = createItem(totalLength, slabManager);
             if (item != null) {
                 return item;
             }
@@ -605,7 +601,7 @@ public class FlatMap
                 return item;
             }
 
-            item = Item.createItem(totalLength, slabManager, useCas);
+            item = createItem(totalLength, slabManager);
             return item;
         }
 
@@ -818,7 +814,7 @@ public class FlatMap
             // back until we hit an item older than the oldest_live time.
             // The oldest_live checking will auto-expire the remaining items.
             long nextAddress;
-            for (Item iter = Item.cast(head.getNext()); iter.getAddress() != tail.getAddress(); iter.setAddress(nextAddress)) {
+            for (Item iter = cast(head.getNext()); iter.getAddress() != tail.getAddress(); iter.setAddress(nextAddress)) {
                 if (iter.getTime() < oldest_live) {
                     // We've hit the first old item. Continue to the next queue.
                     break;
@@ -857,95 +853,84 @@ public class FlatMap
         }
     }
 
+    private static final int ITEM_LINKED = 1;
+//    private static final int ITEM_CAS = 2;
+    // temp
+    private static final int ITEM_SLABBED = 4;
 
-    @SuppressWarnings({"PointlessArithmeticExpression"})
-    public static class Item
+    private static final int NEXT_OFFSET = 0;                               //  0
+    private static final int PREV_OFFSET = NEXT_OFFSET + LONG_SIZE;         //  8
+    private static final int HASH_NEXT_OFFSET = PREV_OFFSET + LONG_SIZE;    // 16
+    private static final int TIME_OFFSET = HASH_NEXT_OFFSET + LONG_SIZE;    // 24
+    private static final int EXPIRE_TIME_OFFSET = TIME_OFFSET + INT_SIZE;   // 28
+    private static final int VALUE_LENGTH_OFFSET = EXPIRE_TIME_OFFSET + INT_SIZE; // 32
+    private static final int REF_COUNT_OFFSET = VALUE_LENGTH_OFFSET + INT_SIZE; // 36
+    private static final int SUFFIX_LENGTH_OFFSET = REF_COUNT_OFFSET + SHORT_SIZE; // 38
+    private static final int FLAGS_OFFSET = SUFFIX_LENGTH_OFFSET + BYTE_SIZE; // 39
+    private static final int SLAB_ID_OFFSET = FLAGS_OFFSET + BYTE_SIZE; // 40
+    private static final int KEY_LENGTH_OFFSET = SLAB_ID_OFFSET + BYTE_SIZE; // 41
+    public static final int FIXED_SIZE = KEY_LENGTH_OFFSET + BYTE_SIZE;
+    private static final int CAS_OFFSET = KEY_LENGTH_OFFSET + BYTE_SIZE; // 42   todo should be 8 byte aligned
+    private static final int FIXED_SIZE_WITH_CAS = CAS_OFFSET + LONG_SIZE;
+
+    public Item cast(long address)
     {
-        private final Logger log = Logger.getLogger(Item.class.getName());
-
-        private static final int ITEM_LINKED = 1;
-        private static final int ITEM_CAS = 2;
-        // temp
-        private static final int ITEM_SLABBED = 4;
-
-        private static final int NEXT_OFFSET = 0;                               //  0
-        private static final int PREV_OFFSET = NEXT_OFFSET + LONG_SIZE;         //  8
-        private static final int HASH_NEXT_OFFSET = PREV_OFFSET + LONG_SIZE;    // 16
-        private static final int TIME_OFFSET = HASH_NEXT_OFFSET + LONG_SIZE;    // 24
-        private static final int EXPIRE_TIME_OFFSET = TIME_OFFSET + INT_SIZE;   // 28
-        private static final int VALUE_LENGTH_OFFSET = EXPIRE_TIME_OFFSET + INT_SIZE; // 32
-        private static final int REF_COUNT_OFFSET = VALUE_LENGTH_OFFSET + INT_SIZE; // 36
-        private static final int SUFFIX_LENGTH_OFFSET = REF_COUNT_OFFSET + SHORT_SIZE; // 38
-        private static final int FLAGS_OFFSET = SUFFIX_LENGTH_OFFSET + BYTE_SIZE; // 39
-        private static final int SLAB_ID_OFFSET = FLAGS_OFFSET + BYTE_SIZE; // 40
-        private static final int KEY_LENGTH_OFFSET = SLAB_ID_OFFSET + BYTE_SIZE; // 41
-
-        public static final int FIXED_SIZE = KEY_LENGTH_OFFSET + BYTE_SIZE;
-
-        private static final int CAS_OFFSET = KEY_LENGTH_OFFSET + BYTE_SIZE; // 42   todo should be 8 byte aligned
-
-        private static final int FIXED_SIZE_WITH_CAS = CAS_OFFSET + LONG_SIZE;
-
-
-        /// **
-        //  * Structure for storing items within memcached.
-        //  */
-        // typedef struct _stritem {
-        //     struct _stritem *next;
-        //     struct _stritem *prev;
-        //     struct _stritem *h_next;    /* hash chain next */
-        //     rel_time_t      time;       /* least recent access */
-        //     rel_time_t      exptime;    /* expire time */
-        //     int             nbytes;     /* size of data */
-        //     unsigned short  refcount;
-        //     uint8_t         nsuffix;    /* length of flags-and-length string */
-        //     uint8_t         it_flags;   /* ITEM_* above */
-        //     uint8_t         slabs_clsid;/* which slab class we're in */
-        //     uint8_t         nkey;       /* key length, w/terminating null and padding */
-        //     void * end[];
-        //     /* if it_flags & ITEM_CAS we have 8 bytes CAS */
-        //     /* then null-terminated key */
-        //     /* then " flags length\r\n" (no terminating null) */
-        //     /* then data with terminating \r\n (no terminating null; it's binary!) */
-        // } item;
-
-        public static Item cast(long address)
-        {
-            if (address == 0) {
-                return new Item(new UnsafeAllocation(address, FIXED_SIZE));
-            }
-            return new Item(Allocator.NULL_POINTER);
+        if (address != 0) {
+            return new Item(this, slabAllocator.region(address));
         }
+        return new Item(this, Allocator.NULL_POINTER);
+    }
 
-        public static Item createItem(long totalLength, SlabManager slabManager, boolean useCas)
-        {
-            Region region = slabManager.allocate(totalLength);
-            if (region == null) {
-                return null;
-            }
-            region.setMemory((byte) 0);
-
-            Item item = new Item(region);
-            if (useCas) {
-                item.setFlags((byte) ITEM_CAS);
-            }
-            return item;
+    public Item createItem(long totalLength, SlabManager slabManager)
+    {
+        Region region = slabManager.allocate(totalLength);
+        if (region == null) {
+            return null;
         }
+        region.setMemory((byte) 0);
+        return new Item(this, region);
+    }
 
-        public static int calculateTotalSize(int keyLength, int suffixLength, int valueLength, boolean usingCas)
-        {
-            if (usingCas) {
-                return FIXED_SIZE_WITH_CAS + keyLength + 1 + suffixLength + valueLength;
-            }
-            else {
-                return FIXED_SIZE + keyLength + 1 + suffixLength + valueLength;
-            }
+    public int calculateTotalSize(int keyLength, int suffixLength, int valueLength)
+    {
+        if (useCas) {
+            return FIXED_SIZE_WITH_CAS + keyLength + 1 + suffixLength + valueLength;
         }
+        else {
+            return FIXED_SIZE + keyLength + 1 + suffixLength + valueLength;
+        }
+    }
 
+    /// **
+    //  * Structure for storing items within memcached.
+    //  */
+    // typedef struct _stritem {
+    //     struct _stritem *next;
+    //     struct _stritem *prev;
+    //     struct _stritem *h_next;    /* hash chain next */
+    //     rel_time_t      time;       /* least recent access */
+    //     rel_time_t      exptime;    /* expire time */
+    //     int             nbytes;     /* size of data */
+    //     unsigned short  refcount;
+    //     uint8_t         nsuffix;    /* length of flags-and-length string */
+    //     uint8_t         it_flags;   /* ITEM_* above */
+    //     uint8_t         slabs_clsid;/* which slab class we're in */
+    //     uint8_t         nkey;       /* key length, w/terminating null and padding */
+    //     void * end[];
+    //     /* if it_flags & ITEM_CAS we have 8 bytes CAS */
+    //     /* then null-terminated key */
+    //     /* then " flags length\r\n" (no terminating null) */
+    //     /* then data with terminating \r\n (no terminating null; it's binary!) */
+    // } item;
+    @SuppressWarnings({"PointlessArithmeticExpression"})
+    static public class Item {
+        static private final Logger log = Logger.getLogger(Item.class.getName());
+        private final FlatMap parent;
         private Region region;
 
-        private Item(Region region)
+        private Item(FlatMap parent, Region region)
         {
+            this.parent = parent;
             this.region = region;
         }
 
@@ -1012,7 +997,7 @@ public class FlatMap
         /**
          * Done using item... may free item
          */
-        public void release(SlabAllocator slabAllocator)
+        public void release()
         {
             assert !isSlabbed();
 
@@ -1026,7 +1011,7 @@ public class FlatMap
 
             // if ref count is 0 and item has been unlinked, free it
             if (refCount == 0 && !isLinked()) {
-                free(slabAllocator.getSlabManager(getSlabId()));
+                free(parent.slabAllocator.getSlabManager(getSlabId()));
             }
         }
 
@@ -1053,20 +1038,20 @@ public class FlatMap
             // if we have a next, set item.next.prev = item.prev
             if (getNext() != 0) {
                 // Cas use doen't matter since use are only using the fixed region of the struct
-                cast(getNext()).setPrev(getPrev());
+                parent.cast(getNext()).setPrev(getPrev());
             }
 
             // if we have a prev, set item.prev.next = item.next
             if (getPrev() != 0) {
                 // Cas use doen't matter since use are only using the fixed region of the struct
-                cast(getPrev()).setNext(getNext());
+                parent.cast(getPrev()).setNext(getNext());
             }
 
         }
 
         public Region getKey()
         {
-            return new UnsafeAllocation(getAddress() + getKeyOffset(), getKeyLength());
+            return region.getRegion(getKeyOffset(), getKeyLength());
         }
 
         public void setKey(byte[] key)
@@ -1083,12 +1068,14 @@ public class FlatMap
 
         public Region getSuffix()
         {
-            return new UnsafeAllocation(getAddress() + getSuffixOffset(), getSuffixLength());
+            return region.getRegion(getSuffixOffset(), getSuffixLength());
         }
 
         public Region getValue()
         {
-            return new UnsafeAllocation(getAddress() + getValueOffset(), getValueLength());
+            int offset = getValueOffset();
+            int len = getValueLength();
+            return region.getRegion(offset, len);
         }
 
         public long getAddress()
@@ -1098,7 +1085,7 @@ public class FlatMap
 
         public void setAddress(long address)
         {
-            this.region = new UnsafeAllocation(address, FIXED_SIZE);
+            this.region = parent.slabAllocator.region(address, FIXED_SIZE);
         }
 
         /**
@@ -1239,7 +1226,7 @@ public class FlatMap
 
         private boolean isUsingCas()
         {
-            return (getFlags() & ITEM_CAS) != 0;
+            return parent.useCas;
         }
 
         public boolean isSlabbed()
@@ -1353,121 +1340,122 @@ public class FlatMap
 
         public int getTotalSize()
         {
-            return calculateTotalSize(getKeyLength(), getSuffixLength(), getValueLength(), isUsingCas());
+            return parent.calculateTotalSize(getKeyLength(), getSuffixLength(), getValueLength());
         }
 
-        public static class NextChain implements Iterable<Item>
+    }
+
+    public class NextChain implements Iterable<Item>
+    {
+        private final long start;
+
+        public NextChain(long start)
         {
-            private final long start;
-
-            public NextChain(long start)
-            {
-                this.start = start;
-            }
-
-            public Iterator<Item> iterator()
-            {
-                return new Iterator<Item>()
-                {
-                    private Item next = cast(start);
-
-                    public boolean hasNext()
-                    {
-                        return next.getAddress() != 0;
-                    }
-
-                    public Item next()
-                    {
-                        if (!hasNext()) {
-                            throw new NoSuchElementException();
-                        }
-
-                        next.setAddress(next.getNext());
-                        return next;
-                    }
-
-                    public void remove()
-                    {
-                        throw new UnsupportedOperationException();
-                    }
-                };
-            }
+            this.start = start;
         }
 
-        public static class PrevChain implements Iterable<Item>
+        public Iterator<Item> iterator()
         {
-            private final long start;
-
-            public PrevChain(Item start)
+            return new Iterator<Item>()
             {
-                this.start = start.getAddress();
-            }
+                private Item next = cast(start);
 
-            public Iterator<Item> iterator()
-            {
-                return new Iterator<Item>()
+                public boolean hasNext()
                 {
-                    private Item next = cast(start);
+                    return next.getAddress() != 0;
+                }
 
-                    public boolean hasNext()
-                    {
-                        return next.getAddress() != 0;
+                public Item next()
+                {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException();
                     }
+                    Item rc = next;
+                    next = cast(next.getNext());
+                    return rc;
+                }
 
-                    public Item next()
-                    {
-                        if (!hasNext()) {
-                            throw new NoSuchElementException();
-                        }
+                public void remove()
+                {
+                    throw new UnsupportedOperationException();
+                }
+            };
+        }
+    }
 
-                        next.setAddress(next.getPrev());
-                        return next;
-                    }
+    public class PrevChain implements Iterable<Item>
+    {
+        private final long start;
 
-                    public void remove()
-                    {
-                        throw new UnsupportedOperationException();
-                    }
-                };
-            }
+        public PrevChain(Item start)
+        {
+            this.start = start.getAddress();
         }
 
-        public static class HashChain implements Iterable<Item>
+        public Iterator<Item> iterator()
         {
-            private final long start;
-
-            public HashChain(long start)
+            return new Iterator<Item>()
             {
-                this.start = start;
-            }
+                private Item next = cast(start);
 
-            public Iterator<Item> iterator()
-            {
-                return new Iterator<Item>()
+                public boolean hasNext()
                 {
-                    private Item next = cast(start);
+                    return next.getAddress() != 0;
+                }
 
-                    public boolean hasNext()
-                    {
-                        return next.getAddress() != 0;
+                public Item next()
+                {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException();
                     }
+                    Item rc = next;
+                    next = cast(next.getPrev());
+                    return rc;
+                }
 
-                    public Item next()
-                    {
-                        if (!hasNext()) {
-                            throw new NoSuchElementException();
-                        }
+                public void remove()
+                {
+                    throw new UnsupportedOperationException();
+                }
+            };
+        }
+    }
 
-                        next.setAddress(next.getHashClainNext());
-                        return next;
+    public class HashChain implements Iterable<Item>
+    {
+        private final long start;
+
+        public HashChain(long start)
+        {
+            this.start = start;
+        }
+
+        public Iterator<Item> iterator()
+        {
+            return new Iterator<Item>()
+            {
+                private Item next = cast(start);
+
+                public boolean hasNext()
+                {
+                    return next.getAddress() != 0;
+                }
+
+                public Item next()
+                {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException();
                     }
+                    Item rc = next;
+                    next = cast(next.getHashClainNext());
+                    return rc;
+                }
 
-                    public void remove()
-                    {
-                        throw new UnsupportedOperationException();
-                    }
-                };
-            }
+                public void remove()
+                {
+                    throw new UnsupportedOperationException();
+                }
+            };
         }
     }
 
@@ -1494,6 +1482,46 @@ public class FlatMap
 
         // MEMCACHED_ASSOC_INSERT(ITEM_key(it), it.nkey, hash_items);
         void assocInsert(Item item, int hashItems);
+    }
+
+    /**
+     * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
+     */
+    public class NullMonitor implements Monitor {
+        @Override
+        public void assocFind(Item item, int depth) {
+            
+        }
+
+        @Override
+        public void itemLink(Item item) {
+            
+        }
+
+        @Override
+        public void itemUnlink(Item item) {
+            
+        }
+
+        @Override
+        public void itemRemove(Item item) {
+            
+        }
+
+        @Override
+        public void itemUpdate(Item item) {
+            
+        }
+
+        @Override
+        public void itemReplace(Item oldOld, Item newItem) {
+            
+        }
+
+        @Override
+        public void assocInsert(Item item, int hashItems) {
+            
+        }
     }
 
     public interface ItemStats
@@ -1527,6 +1555,28 @@ public class FlatMap
 
         void tailRepaired(Item item);
 //                itemstats[id].tailrepairs++;
+    }
+
+    public class NullItemStats implements ItemStats {
+        @Override
+        public void added(Item item) {
+        }
+
+        @Override
+        public void removed(Item item) {
+        }
+
+        @Override
+        public void evicted(Item item) {
+        }
+
+        @Override
+        public void outOfMemory() {
+        }
+
+        @Override
+        public void tailRepaired(Item item) {
+        }
     }
 
 }

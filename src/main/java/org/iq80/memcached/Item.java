@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,10 +80,10 @@ public class Item
     //     /* then data with terminating \r\n (no terminating null; it's binary!) */
     // } item;
 
-    public static Item cast(long address)
+    public static Item cast(Allocator allocator, long address)
     {
         if (address == 0) {
-            return new Item(new UnsafeAllocation(address, FIXED_SIZE));
+            return new Item(allocator.region(address, FIXED_SIZE));
         }
         return new Item(Allocator.NULL_POINTER);
     }
@@ -209,7 +210,7 @@ public class Item
         setNext(address);
         if (address != 0) {
             // Cas use doen't matter since use are only using the fixed region of the struct
-            cast(address).setPrev(getAddress());
+            cast(region.getAllocator(), address).setPrev(getAddress());
         }
     }
 
@@ -225,18 +226,18 @@ public class Item
         // if we have a next, set item.next.prev = item.prev
         if (getNext() != 0) {
             // Cas use doen't matter since use are only using the fixed region of the struct
-            cast(getNext()).setPrev(getPrev());
+            cast(region.getAllocator(), getNext()).setPrev(getPrev());
         }
         if (getPrev() != 0) {
             // Cas use doen't matter since use are only using the fixed region of the struct
-            cast(getPrev()).setNext(getNext());
+            cast(region.getAllocator(), getPrev()).setNext(getNext());
         }
 
     }
 
     public Region getKey()
     {
-        return new UnsafeAllocation(getAddress() + getKeyOffset(), getKeyLength());
+        return region.getRegion(getKeyOffset(), getKeyLength());
     }
 
     public void setKey(byte[] key)
@@ -253,12 +254,12 @@ public class Item
 
     public Region getSuffix()
     {
-        return new UnsafeAllocation(getAddress() + getSuffixOffset(), getSuffixLength());
+        return region.getRegion(getSuffixOffset(), getSuffixLength());
     }
 
     public Region getValue()
     {
-        return new UnsafeAllocation(getAddress() + getValueOffset(), getValueLength());
+        return region.getRegion(getValueOffset(), getValueLength());
     }
 
     public long getAddress()
@@ -266,9 +267,9 @@ public class Item
         return region.getAddress();
     }
 
-    public void setAddress(long address)
+    public void setAddress(Allocator allocator, long address)
     {
-        this.region = new UnsafeAllocation(address, FIXED_SIZE);
+        this.region = allocator.region(address, FIXED_SIZE);
     }
 
     /**
@@ -307,6 +308,10 @@ public class Item
     {
         long prevAddress = prev == null ? 0 : prev.getAddress();
         region.putLong(PREV_OFFSET, prevAddress);
+    }
+
+    public Allocator getAllocator() {
+        return region.getAllocator();
     }
 
     /**
@@ -528,10 +533,12 @@ public class Item
 
     public static class NextChain implements Iterable<Item>
     {
+        private final Allocator allocator;
         private final long start;
 
-        public NextChain(long start)
+        public NextChain(Allocator allocator, long start)
         {
+            this.allocator = allocator;
             this.start = start;
         }
 
@@ -539,7 +546,7 @@ public class Item
         {
             return new Iterator<Item>()
             {
-                private Item next = cast(start);
+                private Item next = cast(allocator, start);
 
                 public boolean hasNext()
                 {
@@ -552,7 +559,7 @@ public class Item
                         throw new NoSuchElementException();
                     }
 
-                    next.setAddress(next.getNext());
+                    next.setAddress(allocator, next.getNext());
                     return next;
                 }
 
@@ -566,10 +573,12 @@ public class Item
 
     public static class PrevChain implements Iterable<Item>
     {
+        private final Allocator allocator;
         private final long start;
 
-        public PrevChain(long start)
+        public PrevChain(Allocator allocator, long start)
         {
+            this.allocator = allocator;
             this.start = start;
         }
 
@@ -577,7 +586,7 @@ public class Item
         {
             return new Iterator<Item>()
             {
-                private Item next = cast(start);
+                private Item next = cast(allocator, start);
 
                 public boolean hasNext()
                 {
@@ -590,7 +599,7 @@ public class Item
                         throw new NoSuchElementException();
                     }
 
-                    next.setAddress(next.getPrev());
+                    next.setAddress(allocator, next.getPrev());
                     return next;
                 }
 
@@ -604,10 +613,12 @@ public class Item
 
     public static class HashChain implements Iterable<Item>
     {
+        private final Allocator allocator;
         private final long start;
 
-        public HashChain(long start)
+        public HashChain(Allocator allocator, long start)
         {
+            this.allocator = allocator;
             this.start = start;
         }
 
@@ -615,7 +626,7 @@ public class Item
         {
             return new Iterator<Item>()
             {
-                private Item next = cast(start);
+                private Item next = cast(allocator, start);
 
                 public boolean hasNext()
                 {
@@ -628,7 +639,7 @@ public class Item
                         throw new NoSuchElementException();
                     }
 
-                    next.setAddress(next.getHashClainNext());
+                    next.setAddress(allocator, next.getHashClainNext());
                     return next;
                 }
 

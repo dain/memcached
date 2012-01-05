@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +25,7 @@
 package org.iq80.memcached;
 
 import org.iq80.memory.Region;
+import org.iq80.memory.UnsafeAllocator;
 
 import java.nio.ByteOrder;
 
@@ -84,7 +86,10 @@ public class Hash
         // internal state
         InternalState state = new InternalState(0xdeadbeef + length + initialValue);
 
-        Alignment alignment = Alignment.getAlignment(key.getAddress());
+        Alignment alignment = Alignment.ALIGN_8;
+        if( key.getAllocator() == UnsafeAllocator.INSTANCE ) {
+            alignment = Alignment.getAlignment(key.getAddress());
+        }
         if (alignment == Alignment.ALIGN_32) {
             //
             // 32 bit aligned

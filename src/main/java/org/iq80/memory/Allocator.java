@@ -15,9 +15,11 @@
  */
 package org.iq80.memory;
 
+import java.nio.ByteBuffer;
+
 public interface Allocator
 {
-    Allocation NULL_POINTER = new NullRegion();
+    Allocation NULL_POINTER = new NullAllocation();
     int BYTE_SIZE = 1;
     int CHAR_SIZE = 2;
     int SHORT_SIZE = 2;
@@ -29,10 +31,25 @@ public interface Allocator
     Allocation allocate(long size)
             throws OutOfMemoryError;
 
-    public static final class NullRegion implements Allocation
+    Region region(long address, long length)
+            throws IndexOutOfBoundsException;
+
+    Region region(long address)
+            throws IndexOutOfBoundsException;
+
+    public static final class NullAllocation implements Allocation
     {
-        private NullRegion()
+        @Override
+        public Allocator getAllocator() {
+            return null;
+        }
+
+        private NullAllocation()
         {
+        }
+
+        public ByteBuffer toByteBuffer() {
+            return null;
         }
 
         public long getAddress()
