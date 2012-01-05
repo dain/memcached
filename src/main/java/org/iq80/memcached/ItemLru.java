@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +56,7 @@ public class ItemLru {
      */
     public Item findExpired(int tries, int currentTime) {
         // do a quick check if we have any expired items in the tail..
-        for (Item search : new PrevChain(tail)) {
+        for (Item search : new PrevChain(slabManager.getAllocator(), tail)) {
             if (search.getRefCount() == 0 && search.getExptime() != 0 && search.getExptime() < currentTime) {
                 steal(search);
 
@@ -85,7 +86,7 @@ public class ItemLru {
             return null;
         }
 
-        for (Item search : new PrevChain(tail)) {
+        for (Item search : new PrevChain(slabManager.getAllocator(), tail)) {
             if (search.getRefCount() == 0) {
                 if (search.getExptime() == 0 || search.getExptime() > currentTime) {
                     stats.evicted(search);
@@ -115,7 +116,7 @@ public class ItemLru {
         // We can reasonably assume no item can stay locked for more than
         // three hours, so if we find one in the tail which is that old,
         // free it anyway.
-        for (Item search : new PrevChain(tail)) {
+        for (Item search : new PrevChain(slabManager.getAllocator(), tail)) {
             if (search.getRefCount() != 0 && search.getTime() + TAIL_REPAIR_TIME < currentTime) {
                 stats.tailRepaired(search);
                 steal(search);
@@ -226,7 +227,7 @@ public class ItemLru {
         // back until we hit an item older than the oldest_live time.
         // The oldest_live checking will auto-expire the remaining items.
         long nextAddress;
-        for (Item item = Item.cast(head); item != null; item.setAddress(nextAddress)) {
+        for (Item item = Item.cast(slabManager.getAllocator(), head); item != null; item.setAddress(slabManager.getAllocator(), nextAddress)) {
             if (item.getTime() < oldestLive) {
                 // We've hit the first old item. Continue to the next queue.
                 break;

@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,10 +67,12 @@ public class UnsafeMemoryMappedFile implements Closeable
 
     private UnsafeAllocation fullPointer;
     private Region region;
+    private final Allocator allocator;
 
-    public UnsafeMemoryMappedFile(File file, boolean writable)
+    public UnsafeMemoryMappedFile(Allocator allocator, File file, boolean writable)
             throws IOException, OutOfMemoryError
     {
+        this.allocator = allocator;
         randomAccessFile = new RandomAccessFile(file, writable ? "rw" : "r");
         this.channel = randomAccessFile.getChannel();
 
@@ -118,21 +121,22 @@ public class UnsafeMemoryMappedFile implements Closeable
 
         // fullPointer is a pointer to the fully mapped space
         // this is used internally for load and unmap
-        fullPointer = new UnsafeAllocation(unsafe, new BlockCopy(unsafe), alignedAddress, alignedSize, true);
+        fullPointer = new UnsafeAllocation(alignedAddress, alignedSize);
 
         // the user gets a pointer to the unaligned address
         region = new SubRegion(fullPointer, 0, channel.size());
     }
 
-    public UnsafeMemoryMappedFile(FileChannel channel, MapMode mode)
+    public UnsafeMemoryMappedFile(Allocator allocator, FileChannel channel, MapMode mode)
             throws IOException, OutOfMemoryError
     {
-        this(channel, mode, 0, channel.size());
+        this(allocator, channel, mode, 0, channel.size());
     }
 
-    public UnsafeMemoryMappedFile(FileChannel channel, MapMode mode, long position, long size)
+    public UnsafeMemoryMappedFile(Allocator allocator, FileChannel channel, MapMode mode, long position, long size)
             throws IOException, OutOfMemoryError
     {
+        this.allocator = allocator;
         if (channel == null) {
             throw new IllegalArgumentException("Channel is null");
         }
@@ -222,7 +226,7 @@ public class UnsafeMemoryMappedFile implements Closeable
 
         // fullPointer is a pointer to the fully mapped space
         // this is used internally for load and unmap
-        fullPointer = new UnsafeAllocation(unsafe, new BlockCopy(unsafe), alignedAddress, alignedSize, true);
+        fullPointer = new UnsafeAllocation(alignedAddress, alignedSize);
 
         // the user gets a pointer to the unaligned address
         long unalignedAddress = alignedAddress + pageOffset;

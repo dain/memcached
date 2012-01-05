@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +17,7 @@
 package org.iq80.memcached;
 
 import org.iq80.memcached.Item.HashChain;
+import org.iq80.memory.Allocator;
 import org.iq80.memory.Region;
 
 public class Association
@@ -94,7 +96,7 @@ public class Association
     private Item findFromBucket(Region key, long[] hashtable, int bucket)
     {
         int depth = 0;
-        for (Item item : new HashChain(hashtable[bucket])) {
+        for (Item item : new HashChain(key.getAllocator(), hashtable[bucket])) {
             if (item.keyEquals(key)) {
                 monitor.assocFind(item, depth);
                 return item;
@@ -167,7 +169,7 @@ public class Association
             return false;
         }
 
-        Item item = Item.cast(hashtable[bucket]);
+        Item item = Item.cast(key.getAllocator(), hashtable[bucket]);
 
         // If this is the one, delete it from the table
         if (item.keyEquals(key)) {
@@ -181,7 +183,7 @@ public class Association
 
         // search though the hash chain...
         Item before = item;
-        for (Item next : new HashChain(before.getHashClainNext())) {
+        for (Item next : new HashChain(before.getAllocator(), before.getHashClainNext())) {
             // If this is the one, delete it from the chain
             if (next.keyEquals(key)) {
                 hashItems--;
@@ -190,7 +192,7 @@ public class Association
                 return true;
             }
             // remember the previous item in the chain so we can update the hashChainNext pointer
-            before.setAddress(next.getAddress());
+            before.setAddress(next.getAllocator(), next.getAddress());
         }
 
         // Before should still be non null unless something went wrong
@@ -232,7 +234,7 @@ public class Association
 
     int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
-    private void associateMaintenanceThread()
+    private void associateMaintenanceThread(Allocator allocator)
     {
 
         while (do_run_maintenance_thread) {
@@ -241,9 +243,9 @@ public class Association
 
             // migrate a batch of buckets
             for (int i = 0; i < hash_bulk_move && expanding; ++i) {
-                for (Item next, item = Item.cast(oldHashtable[expandBucket]); null != item; item = next) {
+                for (Item next, item = Item.cast(allocator, oldHashtable[expandBucket]); null != item; item = next) {
                     // remember the next because it will be overwritten below
-                    next = Item.cast(item.getHashClainNext());
+                    next = Item.cast(item.getAllocator(), item.getHashClainNext());
 
                     // rehash
                     int bucket = Hash.hash(item.getKey(), 0) & hashMask(hashPower);

@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +16,7 @@
  */
 package org.iq80.memcached;
 
+import org.iq80.memory.Allocator;
 import org.iq80.memory.Pointer;
 import org.iq80.memory.Region;
 import org.iq80.memory.UnsafeAllocation;
@@ -115,7 +117,7 @@ public class SlabManager
             // return off our freelist
             requested += size;
             long address = freeList[--freeListCurrsor];
-            return new UnsafeAllocation(address, size);
+            return allocator.region(address, size);
         } else if(openSlab!=null) {
             requested += size;
             // if we recently allocated a whole page, return from that
@@ -228,5 +230,9 @@ public class SlabManager
         sb.append(", chunksPerSlab=").append(chunksPerSlab);
         sb.append('}');
         return sb.toString();
+    }
+
+    public Allocator getAllocator() {
+        return allocator.getAllocator();
     }
 }

@@ -231,7 +231,7 @@ public class HashTest
 
         byte[] data = "abcdefghijklmnopqrstuvwxyz023456789".getBytes();
 
-        Allocator allocator = new UnsafeAllocator();
+        Allocator allocator = UnsafeAllocator.INSTANCE;
         Allocation allocation = allocator.allocate(data.length);
         allocation.putBytes(0, data);
 
@@ -288,7 +288,7 @@ public class HashTest
 
         byte[] data = "abcdefghijklmnopqrstuvwxyz023456789".getBytes();
 
-        Allocator allocator = new UnsafeAllocator();
+        Allocator allocator = UnsafeAllocator.INSTANCE;
         Allocation allocation = allocator.allocate(data.length);
         allocation.putBytes(0, data);
 

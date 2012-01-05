@@ -50,7 +50,7 @@ public class TestPointerSpeed
         long readMB = 0;
         long readKB = 0;
 
-        UnsafeAllocator allocator = new UnsafeAllocator();
+        UnsafeAllocator allocator = UnsafeAllocator.INSTANCE;
         Allocation pointer = allocator.allocate(gigaByte.length);
         try {
             for (int loops = 0; loops < 20; loops++) {

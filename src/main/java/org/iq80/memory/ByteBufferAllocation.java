@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,42 +20,39 @@ import java.nio.ByteBuffer;
 
 public class ByteBufferAllocation implements Allocation
 {
-    private final Allocator allocator;
-    private ByteBuffer byteBuffer;
     private final long address;
+    private ByteBuffer byteBuffer;
 
-    public ByteBufferAllocation(Allocator allocator, ByteBuffer byteBuffer, int id)
+    public ByteBufferAllocation(ByteBuffer byteBuffer, long address)
     {
-        if (allocator == null) {
-            throw new NullPointerException("allocator is null");
-        }
         if (byteBuffer == null) {
             throw new NullPointerException("byteBuffer is null");
         }
-        this.allocator = allocator;
         this.byteBuffer = byteBuffer;
-
-        // every byte buffer allocation has a unique int id, so use it for the address
-        this.address = ((long) id) << 32;
+        this.address = address;
     }
 
-    public ByteBuffer getBufferSafe()
+    private void assertNotFree() {
+        assert this.byteBuffer != null :"ByteBufferPointer has already been freed";
+    }
+
+    public ByteBuffer toByteBuffer()
     {
-        ByteBuffer byteBuffer = this.byteBuffer;
-        if (byteBuffer == null) {
-            throw new IllegalStateException("ByteBufferPointer has already been freed");
-        }
+        assertNotFree();
         return byteBuffer;
     }
 
+
     public void free()
     {
+        assertNotFree();
+        ByteBufferAllocator.INSTANCE.free(this);
         byteBuffer = null;
     }
 
     public Allocation reallocate(long size)
     {
-        return AllocatorUtil.reallocateWithAllocate(allocator, this, size);
+        return AllocatorUtil.reallocateWithAllocate(getAllocator(), this, size);
     }
 
     public long getAddress()
@@ -64,7 +62,7 @@ public class ByteBufferAllocation implements Allocation
 
     public long size()
     {
-        return getBufferSafe().capacity();
+        return toByteBuffer().capacity();
     }
 
     public Region getRegion(long offset)
@@ -81,17 +79,17 @@ public class ByteBufferAllocation implements Allocation
 
     public byte getByte(long index)
     {
-        return getBufferSafe().get((int) index);
+        return toByteBuffer().get((int) index);
     }
 
     public void putByte(long index, byte b)
     {
-        getBufferSafe().put((int) index, b);
+        toByteBuffer().put((int) index, b);
     }
 
     public byte[] getBytes(long srcOffset, int length)
     {
-        ByteBuffer buffer = getBufferSafe().duplicate();
+        ByteBuffer buffer = toByteBuffer().duplicate();
         buffer.position((int) srcOffset);
 
         byte[] target = new byte[length];
@@ -101,7 +99,7 @@ public class ByteBufferAllocation implements Allocation
 
     public void getBytes(long srcOffset, byte[] target)
     {
-        ByteBuffer buffer = getBufferSafe().duplicate();
+        ByteBuffer buffer = toByteBuffer().duplicate();
         buffer.position((int) srcOffset);
 
         buffer.get(target);
@@ -109,7 +107,7 @@ public class ByteBufferAllocation implements Allocation
 
     public void getBytes(long srcOffset, byte[] target, int targetOffset, int length)
     {
-        ByteBuffer buffer = getBufferSafe().duplicate();
+        ByteBuffer buffer = toByteBuffer().duplicate();
         buffer.position((int) srcOffset);
 
         buffer.get(target, targetOffset, length);
@@ -117,7 +115,7 @@ public class ByteBufferAllocation implements Allocation
 
     public void putBytes(long targetOffset, byte[] src)
     {
-        ByteBuffer buffer = getBufferSafe().duplicate();
+        ByteBuffer buffer = toByteBuffer().duplicate();
         buffer.position((int) targetOffset);
 
         buffer.put(src);
@@ -125,7 +123,7 @@ public class ByteBufferAllocation implements Allocation
 
     public void putBytes(long targetOffset, byte[] src, int srcOffset, int length)
     {
-        ByteBuffer buffer = getBufferSafe().duplicate();
+        ByteBuffer buffer = toByteBuffer().duplicate();
         buffer.position((int) targetOffset);
 
         buffer.put(src, srcOffset, length);
@@ -133,67 +131,67 @@ public class ByteBufferAllocation implements Allocation
 
     public char getChar(long index)
     {
-        return getBufferSafe().getChar((int) index);
+        return toByteBuffer().getChar((int) index);
     }
 
     public void putChar(long index, char value)
     {
-        getBufferSafe().putChar((int) index, value);
+        toByteBuffer().putChar((int) index, value);
     }
 
     public short getShort(long index)
     {
-        return getBufferSafe().getShort((int) index);
+        return toByteBuffer().getShort((int) index);
     }
 
     public void putShort(long index, short value)
     {
-        getBufferSafe().putShort((int) index, value);
+        toByteBuffer().putShort((int) index, value);
     }
 
     public int getInt(long index)
     {
-        return getBufferSafe().getInt((int) index);
+        return toByteBuffer().getInt((int) index);
     }
 
     public void putInt(long index, int value)
     {
-        getBufferSafe().putInt((int) index, value);
+        toByteBuffer().putInt((int) index, value);
     }
 
     public long getLong(long index)
     {
-        return getBufferSafe().getLong((int) index);
+        return toByteBuffer().getLong((int) index);
     }
 
     public void putLong(long index, long value)
     {
-        getBufferSafe().putLong((int) index, value);
+        toByteBuffer().putLong((int) index, value);
     }
 
     public float getFloat(long index)
     {
-        return getBufferSafe().getFloat((int) index);
+        return toByteBuffer().getFloat((int) index);
     }
 
     public void putFloat(long index, float value)
     {
-        getBufferSafe().putFloat((int) index, value);
+        toByteBuffer().putFloat((int) index, value);
     }
 
     public double getDouble(long index)
     {
-        return getBufferSafe().getDouble((int) index);
+        return toByteBuffer().getDouble((int) index);
     }
 
     public void putDouble(long index, double value)
     {
-        getBufferSafe().putDouble((int) index, value);
+        toByteBuffer().putDouble((int) index, value);
     }
 
     public void setMemory(byte value)
     {
-        ByteBuffer bufferSafe = getBufferSafe();
+        ByteBuffer bufferSafe = toByteBuffer();
 
         // kind of lame but it works
         int size = bufferSafe.capacity();
@@ -204,7 +202,7 @@ public class ByteBufferAllocation implements Allocation
 
     public void setMemory(long offset, long size, byte value)
     {
-        ByteBuffer bufferSafe = getBufferSafe();
+        ByteBuffer bufferSafe = toByteBuffer();
 
         // kind of lame but it works
         int intOffset = (int) offset;
@@ -228,12 +226,12 @@ public class ByteBufferAllocation implements Allocation
         ByteBufferAllocation targetMemory = (ByteBufferAllocation) target;
 
         // limit target
-        ByteBuffer targetBuffer = targetMemory.getBufferSafe().duplicate();
+        ByteBuffer targetBuffer = targetMemory.toByteBuffer().duplicate();
         targetBuffer.limit((int) (targetOffset + size));
         targetBuffer.position((int) targetOffset);
 
         // limit src
-        ByteBuffer srcBuffer = getBufferSafe().duplicate();
+        ByteBuffer srcBuffer = toByteBuffer().duplicate();
         srcBuffer.limit((int) (srcOffset + size));
         srcBuffer.position((int) srcOffset);
 
@@ -247,11 +245,15 @@ public class ByteBufferAllocation implements Allocation
 
     public boolean isInBounds(long offset, long length)
     {
-        return AllocatorUtil.isInBounds(getBufferSafe().capacity(), offset, length);
+        return AllocatorUtil.isInBounds(toByteBuffer().capacity(), offset, length);
     }
 
     public void checkBounds(long offset, long length)
     {
-        AllocatorUtil.checkBounds(getBufferSafe().capacity(), offset, length);
+        AllocatorUtil.checkBounds(toByteBuffer().capacity(), offset, length);
+    }
+
+    public Allocator getAllocator() {
+        return ByteBufferAllocator.INSTANCE;
     }
 }

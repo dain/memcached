@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +15,8 @@
  * limitations under the License.
  */
 package org.iq80.memory;
+
+import java.nio.ByteBuffer;
 
 import static org.iq80.memory.Allocator.CHAR_SIZE;
 import static org.iq80.memory.Allocator.DOUBLE_SIZE;
@@ -52,6 +55,24 @@ public class SubRegion implements Region
         this.delegateOffset = delegateOffset;
         this.size = size;
         this.checkBounds = isCheckBounds;
+    }
+
+    @Override
+    public ByteBuffer toByteBuffer() {
+        ByteBuffer bb = delegate.toByteBuffer();
+        if( bb == null ) {
+            return null;
+        }
+        bb = bb.duplicate();
+        int offset = (int) (bb.position() + delegateOffset);
+        bb.position(offset);
+        bb.limit((int) (offset+size));
+        return bb.slice();
+    }
+
+    @Override
+    public Allocator getAllocator() {
+        return delegate.getAllocator();
     }
 
     public Region getDelegate()

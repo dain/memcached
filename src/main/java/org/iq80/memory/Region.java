@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +16,17 @@
  */
 package org.iq80.memory;
 
+import java.nio.ByteBuffer;
+
 /**
  * Pointers are NOT thread safe.
  */
 public interface Region
 {
+    Allocator getAllocator();
+
+    ByteBuffer toByteBuffer();
+
     long getAddress();
 
     long size();

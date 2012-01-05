@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +27,9 @@ public class UnsafeAllocator implements Allocator
 {
     public static final Unsafe unsafe;
     public static final BlockCopy blockCopy;
-    private static final ReferenceQueue<UnsafeAllocation> referenceQueue;
+    public static final boolean checkBounds = System.getProperty("org.iq80.memory.CHECK_BOUNDS", "true").equals("true");
+
+    private static final ReferenceQueue<UnsafeAllocation> REFERENCE_QUEUE;
 
     static {
         try {
@@ -45,26 +48,29 @@ public class UnsafeAllocator implements Allocator
 
         blockCopy = new BlockCopy(unsafe);
 
-        referenceQueue = new ReferenceQueue<UnsafeAllocation>();
-        Thread thread = new Thread(new UnsafeMemoryFinalizer(referenceQueue), "UnsafeMemoryFinalizer");
+        REFERENCE_QUEUE = new ReferenceQueue<UnsafeAllocation>();
+        Thread thread = new Thread(new UnsafeMemoryFinalizer(REFERENCE_QUEUE), "UnsafeMemoryFinalizer");
         thread.setDaemon(true);
         // thread.start();      // todo think about automatic collection... should we only use automatic collection?
-
     }
 
     public static final int ADDRESS_SIZE = unsafe.addressSize();
     public static final int PAGE_SIZE = unsafe.pageSize();
 
-    public final boolean checkBounds;
+    public final static UnsafeAllocator INSTANCE = new UnsafeAllocator();
 
-    public UnsafeAllocator()
+    private UnsafeAllocator() {}
+
+    public Region region(long address, long length)
+            throws IndexOutOfBoundsException
     {
-        this(true);
+        return new UnsafeAllocation(address, length);
     }
-
-    public UnsafeAllocator(boolean checkBounds)
+    
+    public Region region(long address)
+            throws IndexOutOfBoundsException
     {
-        this.checkBounds = checkBounds;
+        return new UnsafeAllocation(address, Long.MAX_VALUE-address);
     }
 
     public Allocation allocate(long size)
@@ -80,7 +86,7 @@ public class UnsafeAllocator implements Allocator
         }
 
         long address = unsafe.allocateMemory(size);
-        UnsafeAllocation memory = new UnsafeAllocation(unsafe, blockCopy, address, size, checkBounds);
+        UnsafeAllocation memory = new UnsafeAllocation(address, size);
 //        new UnsafeMemoryPhantomReference(memory, referenceQueue); todo
         return memory;
     }

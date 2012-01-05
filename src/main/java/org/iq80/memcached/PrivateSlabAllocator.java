@@ -1,5 +1,6 @@
 /*
  * Copyright 2010 Proofpoint, Inc.
+ * Copyright (C) 2012, FuseSource Corp.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,5 +88,13 @@ public class PrivateSlabAllocator
             // no more memory available
             return null;
         }
+    }
+
+    public Region region(long address, long length) throws IndexOutOfBoundsException {
+        return allocator.region(address, length);
+    }
+
+    public Allocator getAllocator() {
+        return allocator;
     }
 }
